@@ -1,0 +1,17 @@
+# Base Images
+FROM singularitybase.azurecr.io/base/job/deepspeed/0.4-pytorch-1.10.0-cuda11.4-a100:20211123T120720092
+#FROM singularitybase.azurecr.io/base/job/deepspeed/0.4-pytorch-1.8.0-cuda11.1-cudnn8-devel:20211115T220343416
+RUN apt-get install -y vim tmux openssh-server git
+RUN pip install redis ujson msgpack h5py
+RUN pip install setproctitle pandas scikit-learn
+RUN pip install ruamel.yaml
+
+RUN pip install record fairseq wandb nltk==3.6.2
+
+RUN pip install wikiextractor
+RUN pip install sacrebleu==1.5.0 rouge-score rdflib
+
+COPY data_google /data_google
+RUN chmod -R 777 /data_google
+RUN pip install transformers==4.9.2 datasets
+RUN pip install rapidfuzz==1.6.0
