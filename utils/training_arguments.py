@@ -43,6 +43,10 @@ class WrappedSeq2SeqTrainingArguments(Seq2SeqTrainingArguments):
         default=None, metadata={
             "help": "The ckeckpoint to load the model prefix from."}
     )
+    load_init_from: Optional[str] = field(
+        default=None, metadata={
+            "help": "The ckeckpoint to load the init from."}
+    )
     start_from_first_castep: bool = field(
         default=False, metadata={"help": "Whether to start from the first cascade step."}
     )

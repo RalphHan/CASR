@@ -53,13 +53,18 @@ class CascadeSeq2SeqTrainer(transformers.trainer_seq2seq.Seq2SeqTrainer):
         # for _mode in ['train','eval','test']:
         #     getattr(self,f'{_mode}_dataset').last_predictions = torch.load(os.path.join(_path,f'cas_{_mode}_generation.pk'))
         self.origin_output_dir = self.args.output_dir
-        if self.args.do_restart and self.is_world_process_zero():
-            torch.save(self.model.state_dict(),os.path.join(self.origin_output_dir, 'init.pt'))
+        if self.args.do_restart:
+            if self.args.load_init_from is None:
+                if self.is_world_process_zero():
+                    torch.save(self.model.state_dict(),os.path.join(self.origin_output_dir, 'init.pt'))
+                self.args.load_init_from = os.path.join(self.origin_output_dir, 'init.pt')
+            else:
+                assert self.args.start_from_first_castep
             assert not hasattr(self.model,'update_version')
         torch.distributed.barrier()
         for cascade_step in range(self.args.max_cascade_steps):
             if self.args.do_restart and cascade_step>0:
-                self.model.load_state_dict(torch.load(os.path.join(self.origin_output_dir, 'init.pt'),map_location='cpu'))
+                self.model.load_state_dict(torch.load(self.args.load_init_from, map_location='cpu'))
             if hasattr(self.model,'update_version'):
                 self.model.update_version()
             self.args.output_dir = os.path.join(self.origin_output_dir, 'cas_%d' % cascade_step)

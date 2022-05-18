@@ -87,5 +87,6 @@ cascade_train_finetune.py \
 --fp16_opt_level O2 \
 --do_restart \
 --start_from_first_castep true \
---load_prefix_from ${PREFIX_CKPT}
+--load_prefix_from ${PREFIX_CKPT} \
+--load_init_from output/sepenc_T5_base_finetune_${TASK}_restart/init.pt
 
