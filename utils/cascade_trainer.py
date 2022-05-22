@@ -64,7 +64,7 @@ class CascadeSeq2SeqTrainer(transformers.trainer_seq2seq.Seq2SeqTrainer):
         torch.distributed.barrier()
         for cascade_step in range(self.args.max_cascade_steps):
             if self.args.do_restart and cascade_step>0:
-                self.model.load_state_dict(torch.load(self.args.load_init_from, map_location='cpu'))
+                self.model.load_state_dict(torch.load(self.args.load_init_from, map_location='cpu'), strict=False)
             if hasattr(self.model,'update_version'):
                 self.model.update_version()
             self.args.output_dir = os.path.join(self.origin_output_dir, 'cas_%d' % cascade_step)
