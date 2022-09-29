@@ -49,6 +49,7 @@ class MyT5ForConditionalGeneration(T5ForConditionalGeneration):
         output_hidden_states=None,
         return_dict=None,
         mode='casdec',
+        castep=None,
         last_predictions=None,
         **kwargs
     ):
@@ -170,17 +171,13 @@ class MyT5ForConditionalGeneration(T5ForConditionalGeneration):
             sequence_output = sequence_output * (self.model_dim ** -0.5)
 
         lm_logits = self.lm_head(sequence_output)
+        if hasattr(self,'vocab_mask'):
+            lm_logits=lm_logits+self.vocab_mask[castep]
 
         loss = None
         if labels is not None:
             loss_fct = CrossEntropyLoss(ignore_index=-100)
             loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
-            # loss_fct = CrossEntropyLoss(ignore_index=-100)
-            # drop_slice = lm_logits.view(-1, lm_logits.size(-1)).sum(-1)
-            # drop_slice = drop_slice.isnan() | drop_slice.isinf()
-            # new_label = labels.view(-1).clone()
-            # new_label[drop_slice] = -100
-            # loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), new_label)
             # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
 
         if not return_dict:
@@ -243,16 +240,11 @@ class Model(MyT5ForConditionalGeneration):
     def forward(self,
                 **kwargs,
                 ):
-        if self.do_non_auto:
-            kwargs["decoder_input_ids"]=torch.full_like(kwargs["labels"],5)
         outputs = super().forward(
             mode=self.policy,
+            castep=self.cascade_step,
             **kwargs
         )
-        if self.do_ff_argmax:
-            preds=outputs.logits.argmax(-1).detach()
-            return {'loss':outputs.loss,
-                    'logits':preds}
         return outputs
 
 

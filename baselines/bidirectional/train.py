@@ -19,8 +19,9 @@ from transformers import AutoTokenizer,AutoModelForSeq2SeqLM
 from transformers.trainer_utils import get_last_checkpoint
 import utils.tool
 from utils.configue import Configure
-from utils.cascade_dataset import CascadeDataset
-from utils.cascade_trainer import CascadeSeq2SeqTrainer
+from .dataset import BidirectionalDataset
+from ..progressive.trainer import ProgressiveSeq2SeqTrainer
+from ..progressive.model import Model
 from utils.training_arguments import WrappedSeq2SeqTrainingArguments
 
 # Huggingface realized the "Seq2seqTrainingArguments" which is the same with "WrappedSeq2SeqTrainingArguments"
@@ -102,28 +103,18 @@ def main() -> None:
                 to_seq2seq(meta_tuning_data)
 
     evaluator = utils.tool.get_evaluator(args.evaluate.tool)(args)
-    model_name=args.model.name
     if training_args.lucas_method:
         assert training_args.lucas_method in {'sepenc','fusenc','casdec'}
 
     if "t5" in training_args.backbone:
-        model = utils.tool.get_model("unified.finetune").from_pretrained(training_args.backbone)
-        if training_args.scratch_decoder:
-            from transformers import T5ForConditionalGeneration,T5Config
-            model_config = T5Config.from_pretrained(training_args.backbone)
-            random_decoder_dict=T5ForConditionalGeneration(model_config).decoder.state_dict()
-            del random_decoder_dict['embed_tokens.weight']
-            print(model.decoder.load_state_dict(random_decoder_dict,strict=False))
-            del random_decoder_dict
+        model = Model.from_pretrained(training_args.backbone)
         if training_args.lucas_method=='sepenc':
             model.encoder2=copy.deepcopy(model.encoder)
-    elif "bart" in training_args.backbone:
-        model = utils.tool.get_model("unified.finetune_bart").from_pretrained(training_args.backbone)
-        if training_args.lucas_method == 'sepenc':
-            model.model.encoder2 = copy.deepcopy(model.model.encoder)#facebook/bart-base
     else:
         raise NotImplementedError
+
     model.policy=training_args.lucas_method
+    model.cascade_step=0
     model_tokenizer = AutoTokenizer.from_pretrained(training_args.backbone,use_fast=False)
     if args.special_tokens:
         model_tokenizer.add_tokens([v for k, v in args.special_tokens])
@@ -147,16 +138,18 @@ def main() -> None:
         training_args.max_steps=20
 
     # We wrap the "string" seq2seq data into "tokenized tensor".
-    train_dataset = CascadeDataset(args, training_args, model_tokenizer,
+
+    train_dataset = BidirectionalDataset(args, training_args, model_tokenizer,
                                      seq2seq_train_dataset) if seq2seq_train_dataset else None
-    eval_dataset = CascadeDataset(args, training_args, model_tokenizer,
+    eval_dataset = BidirectionalDataset(args, training_args, model_tokenizer,
                                     seq2seq_eval_dataset) if seq2seq_eval_dataset else None
-    test_dataset = CascadeDataset(args, training_args, model_tokenizer,
+    test_dataset = BidirectionalDataset(args, training_args, model_tokenizer,
                                     seq2seq_test_dataset) if seq2seq_test_dataset else None
+
 
     # Initialize our Trainer
     early_stopping_callback = EarlyStoppingCallback(early_stopping_patience=args.seq2seq.patience if args.seq2seq.patience else 5)
-    trainer = CascadeSeq2SeqTrainer(
+    trainer = ProgressiveSeq2SeqTrainer(
         args=training_args,
         model=model,
         evaluator=evaluator,

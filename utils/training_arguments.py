@@ -43,10 +43,6 @@ class WrappedSeq2SeqTrainingArguments(Seq2SeqTrainingArguments):
         default=None, metadata={
             "help": "The ckeckpoint to load the model prefix from."}
     )
-    load_init_from: Optional[str] = field(
-        default=None, metadata={
-            "help": "The ckeckpoint to load the init from."}
-    )
     start_from_first_castep: bool = field(
         default=False, metadata={"help": "Whether to start from the first cascade step."}
     )
@@ -61,6 +57,9 @@ class WrappedSeq2SeqTrainingArguments(Seq2SeqTrainingArguments):
     sudoku_path: Optional[str] = field(
         default='./data/sudoku/', metadata={
             "help": "where the sudoku datasets is?"}
+    )
+    vocab_weight_path: Optional[str] = field(
+        default=None, metadata={"help": "where the vocab_weight is"}
     )
     bart_size: Optional[str] = field(
         default='small', metadata={
@@ -81,4 +80,11 @@ class WrappedSeq2SeqTrainingArguments(Seq2SeqTrainingArguments):
     do_non_auto: bool = field(
         default=False, metadata={"help": "Whether to do non autoregressive."}
     )
+    debug_mode: bool = field(
+        default=False, metadata={"help": "Whether to debug"}
+    )
+    scratch_decoder: bool = field(
+        default=False, metadata={"help": "Whether to scratch decoder"}
+    )
+
 
