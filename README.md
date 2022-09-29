@@ -1,5 +1,5 @@
-This is the implement of the paper, **CAIR: Generating Complicated Sequences with
-Autoregressive Iterative Refinement**.
+This is the implement of the paper, **CASR: Generating Complicated Sequences with
+Autoregressive Self-Boost Refinement**.
 
 The overview logic is in [utils.cascade_trainer.CascadeSeq2SeqTrainer.train_all](utils/cascade_trainer.py)
 # Quick Start
@@ -16,7 +16,20 @@ bash script/ft-t5-con/run_sing.sh
 ```
 To train continue on Sudoku, run: 
 ```
-BART_SIZE=base bash trainer_sudoku.sh
+BART_SIZE=base bash script/trainer_sudoku.sh
+```
+
+To train CASR-Large, run:
+```
+bash script/trainer_large.sh
+```
+
+# Baselines 
+```
+bash baselines/inat/train.sh # INAT
+bash baselines/levenshtein/train.sh # Levenshtein
+bash baselines/bidirectional/train.sh # Bidirectional
+python -m baselines.progressive.prepare_vocab && bash baselines/progressive/train.sh # Progressive
 ```
 
 # Empirical Studies
