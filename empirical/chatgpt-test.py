@@ -3,8 +3,11 @@ setproctitle.setproctitle('SKG')
 import logging
 import os
 os.sys.path.insert(0,'')
-os.remove('.lock')
-
+import random
+from dotenv import load_dotenv
+load_dotenv()
+import openai
+openai.api_key = os.getenv("OPENAI_API_KEY")
 import torch
 import collections
 if int(torch.__version__.split('.')[1]) >= 8:
@@ -12,7 +15,55 @@ if int(torch.__version__.split('.')[1]) >= 8:
 import datasets
 import utils.tool
 from utils.configue import Configure
+from tqdm import tqdm
+import pickle as pk
+import numpy as np
 
+prefix_prompt={
+    'webqsp':
+        "WebQSP is a classic dataset for KBQA(Knowledge Base Question Answering). "
+        "The input consists of a knowledge graph and an NL query, and the output is an s-Expression which can be executed on the knowledge graph. "
+        ,
+    'mtop':
+        "MTOP is a benchmark for comprehensive multilingual task-oriented semantic parsing. "
+        "The input consists of a list of API calls and an NL query, and the output is a tree-based TOP Representation that can be executed."
+        ,
+    'kvret':
+        "KVRET is a benchmark for table conversation. "
+        "The input consists of a table and an NL query, and the output is an NL response corresponding to the dialog. "
+        ,
+    'sudoku':
+        "Sudoku is an open dataset on Kaggle. "
+        "Its game target is to fill the blanks correctly with the constraint that any two numbers in the same row, column, and house shouldn’t have the same value. "
+        "The input is a flattened sudoku game board with 9x9=81 numbers, where 0 denote blanks to be solved, and non-zero positions cannot be modified. "
+        "The output is also with 81 numbers where blanks are filled with the correct values. "
+}
+
+mid_prompt='''
+For each query, you should give the answer without any explanation or any additional information. 
+When a suggested answer is given (may not be correct), you should repeat it if it's correct, or correct it if it's wrong. 
+For example,
+
+Query: <query1>
+Suggested Answer: None
+Answer: <answer1>
+
+Query: <query2>
+Suggested Answer: <suggested_answer2>
+Answer: 
+'''
+
+def answer(task,query1,answer1,query2,suggested_answer2=None):
+    prompt=prefix_prompt[task]+mid_prompt.replace('<query1>',query1).\
+                                            replace('<answer1>',answer1).\
+                                            replace('<query2>',query2).\
+                                            replace('<suggested_answer2>',suggested_answer2 or 'None')
+    complete=openai.ChatCompletion.create(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": prompt}]
+    ).choices[0].message.content
+
+    return complete
 
 # Huggingface realized the "Seq2seqTrainingArguments" which is the same with "WrappedSeq2SeqTrainingArguments"
 # in transformers==4.10.1 during our work.
@@ -72,7 +123,55 @@ def get_knowledge(raw_item,args,conv_sep = " || "):
         seq_in = "{} ; {}".format(raw_item["description"], seq_in)
     return seq_in
 
-def main() -> None:
+def deal_sudoku() -> None:
+    # Initialize the logger
+    logging.basicConfig(level=logging.INFO)
+    raw_datasets_split: datasets.DatasetDict = datasets.load_dataset(path='csv',
+                                                                     data_files={'test': 'data/sudoku/sudoku_test.csv'})
+
+    seq2seq_test_dataset = raw_datasets_split['test']
+    random.seed(12321)
+    slice1 = random.sample(range(len(seq2seq_test_dataset)), 100)
+    slice2 = random.sample(sorted(set(range(len(seq2seq_test_dataset))) - set(slice1)), 100)
+    slice = slice2 + slice1
+
+    query1, answer1 = seq2seq_test_dataset[slice[0]]['quizzes'], seq2seq_test_dataset[slice[0]]['solutions']
+    os.makedirs(f'output/{os.environ["TASK"]}', exist_ok=True)
+    results = [[] for _ in range(5)]
+    targets = []
+    for x in tqdm(slice[1:]):
+        targets.append(seq2seq_test_dataset[x])
+        query2 = seq2seq_test_dataset[x]['quizzes']
+        answer2 = seq2seq_test_dataset[x]['solutions']
+        suggested_answer2 = None
+        with open(f'output/{os.environ["TASK"]}/{x}.txt', 'w') as f:
+            f.write('input:' + query2 + '\n')
+            f.write('gt:' + answer2 + '\n')
+            for castep in range(5):
+                given_answer2 = answer(os.environ['TASK'], query1, answer1, query2, suggested_answer2)
+                results[castep].append(given_answer2)
+                f.write(f'{castep}:' + given_answer2 + '\n')
+                suggested_answer2 = given_answer2
+    with open(f'output/{os.environ["TASK"]}/results.pk', 'wb') as f:
+        pk.dump(results, f)
+    metric = []
+    for i in range(5):
+        correct_num,tot_num=0,0
+        for pred,gt in zip(results[i],targets):
+            try:
+                quizzes=np.int64(list(gt["quizzes"]))
+                solutions=np.int64(list(gt["solutions"]))
+                tot_num+=(quizzes==0).sum()
+                pred = np.int64(list(pred))
+                assert len(pred)==len(solutions)
+                correct_num+=((quizzes==0)&(pred==solutions)).sum()
+            except:
+                pass
+        metric.append(correct_num/tot_num)
+    print(metric)
+    with open(f'output/{os.environ["TASK"]}/metric.pk', 'wb') as f:
+        pk.dump(metric, f)
+def deal_huggingface() -> None:
     os.environ[
         'CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'  # Deterministic behavior of torch.addmm. Please refer to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
     # torch.set_deterministic(True)
@@ -84,7 +183,6 @@ def main() -> None:
     import nltk
     import ssl
     ssl._create_default_https_context = ssl._create_unverified_context
-
     with FileLock(".lock") as lock:
         nltk.download("punkt", quiet=True)
         nltk.download("stopwords", quiet=True)
@@ -126,22 +224,47 @@ def main() -> None:
 
     evaluator = utils.tool.get_evaluator(args.evaluate.tool)(args)
 
-    seq2seq_train_dataset, seq2seq_eval_dataset, seq2seq_test_dataset = None, None, None
-    if len(seq2seq_dataset_split) == 2:
-        seq2seq_train_dataset, seq2seq_eval_dataset = seq2seq_dataset_split
-    elif len(seq2seq_dataset_split) == 3:
-        seq2seq_train_dataset, seq2seq_eval_dataset, seq2seq_test_dataset = seq2seq_dataset_split
+    if len(seq2seq_dataset_split) == 3:
+        _, _, seq2seq_test_dataset = seq2seq_dataset_split
     else:
         raise ValueError("Other split not support yet.")
-    # print(seq2seq_test_dataset[0]['seq_out'])
-    length=[len(get_knowledge(x,args).split()) for x in seq2seq_test_dataset]
-    print(os.environ['TASK'],len(length),sum(length),sum(length)*1.5/1000*0.002)
-    # length=[len(x['seq_out']) for x in seq2seq_test_dataset]
-    # print('long:', evaluator.evaluate([x['seq_out'] for x in seq2seq_test_dataset],seq2seq_test_dataset, "test"))
+    random.seed(12321)
+    slice1 = random.sample(range(len(seq2seq_test_dataset)), 100)
+    slice2 = random.sample(sorted(set(range(len(seq2seq_test_dataset)))-set(slice1)),100)
+    slice=slice2+slice1
+
+    query1, answer1=get_knowledge(seq2seq_test_dataset[slice[0]],args),seq2seq_test_dataset[slice[0]]['seq_out']
+    os.makedirs(f'output/{os.environ["TASK"]}', exist_ok=True)
+    results=[[] for _ in range(3)]
+    targets=[]
+    for x in tqdm(slice[1:]):
+        targets.append(seq2seq_test_dataset[x])
+        query2 = get_knowledge(seq2seq_test_dataset[x], args)
+        answer2 = seq2seq_test_dataset[x]['seq_out']
+        suggested_answer2 = None
+        with open(f'output/{os.environ["TASK"]}/{x}.txt', 'w') as f:
+            f.write('input:' + query2 + '\n')
+            f.write('gt:' + answer2 + '\n')
+            for castep in range(3):
+                given_answer2=answer(os.environ['TASK'],query1,answer1,query2,suggested_answer2)
+                results[castep].append(given_answer2)
+                f.write(f'{castep}:' + given_answer2 + '\n')
+                suggested_answer2=given_answer2
+    with open(f'output/{os.environ["TASK"]}/results.pk', 'wb') as f:
+        pk.dump(results, f)
+    metric=[]
+    for i in range(3):
+        metric.append(evaluator.evaluate(results[i],targets, "test"))
+    print(metric)
+    with open(f'output/{os.environ["TASK"]}/metric.pk', 'wb') as f:
+        pk.dump(metric, f)
 
 
 if __name__ == "__main__":
-    main()
+   if os.environ['TASK']=='sudoku':
+       deal_sudoku()
+   else:
+       deal_huggingface()
 
 # webqsp 1639 340581 1.021743
 # mtop 4386 902221 2.7066630000000003
