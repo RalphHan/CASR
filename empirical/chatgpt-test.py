@@ -266,7 +266,16 @@ def deal_huggingface() -> None:
         with open(f'output/{os.environ["TASK"]}/{x}.txt', 'r') as f:
             lines = f.readlines()
             for castep in range(3):
-                given_answer2 = lines[castep + 2].split(':',1)[1].strip()
+                flag=False
+                given_answer2=''
+                for line in lines:
+                    if line.startswith(f'{castep}:'):
+                        given_answer2+=line.split(':', 1)[1].strip()
+                        flag=True
+                    elif line.startswith(f'{castep+1}:'):
+                        break
+                    elif flag:
+                        given_answer2+=line.strip()
                 results[castep].append(given_answer2)
     metric=[]
     for i in range(3):
