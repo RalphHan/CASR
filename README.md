@@ -32,6 +32,10 @@ bash baselines/bidirectional/train.sh # Bidirectional
 python -m baselines.progressive.prepare_vocab && bash baselines/progressive/train.sh # Progressive
 ```
 
+To try CASR on **ChatGPT**, run:
+```
+TASK=<your task> python empirical/chatgpt-test.py
+```
 # Empirical Studies
 Scripts of empirical studies are in this directory [empirical](empirical)
 

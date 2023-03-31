@@ -137,10 +137,13 @@ def deal_sudoku() -> None:
 
     query1, answer1 = seq2seq_test_dataset[slice[0]]['quizzes'], seq2seq_test_dataset[slice[0]]['solutions']
     os.makedirs(f'output/{os.environ["TASK"]}', exist_ok=True)
-    results = [[] for _ in range(5)]
-    targets = []
-    for x in tqdm(slice[1:]):
-        targets.append(seq2seq_test_dataset[x])
+    st=-1
+    for i in range(1,len(slice)):
+        if not os.path.exists(f'output/{os.environ["TASK"]}/{slice[i]}.txt'):
+            st=max(1,i-1)
+            break
+
+    for x in tqdm(slice[st:]):
         query2 = seq2seq_test_dataset[x]['quizzes']
         answer2 = seq2seq_test_dataset[x]['solutions']
         suggested_answer2 = None
@@ -149,11 +152,16 @@ def deal_sudoku() -> None:
             f.write('gt:' + answer2 + '\n')
             for castep in range(5):
                 given_answer2 = answer(os.environ['TASK'], query1, answer1, query2, suggested_answer2)
-                results[castep].append(given_answer2)
                 f.write(f'{castep}:' + given_answer2 + '\n')
                 suggested_answer2 = given_answer2
-    with open(f'output/{os.environ["TASK"]}/results.pk', 'wb') as f:
-        pk.dump(results, f)
+    targets = [seq2seq_test_dataset[x] for x in slice[1:]]
+    results = [[] for _ in range(5)]
+    for x in slice[1:]:
+        with open(f'output/{os.environ["TASK"]}/{x}.txt', 'r') as f:
+            lines = f.readlines()
+            for castep in range(5):
+                given_answer2 = lines[castep+2].split(':')[1].strip()
+                results[castep].append(given_answer2)
     metric = []
     for i in range(5):
         correct_num,tot_num=0,0
@@ -235,10 +243,13 @@ def deal_huggingface() -> None:
 
     query1, answer1=get_knowledge(seq2seq_test_dataset[slice[0]],args),seq2seq_test_dataset[slice[0]]['seq_out']
     os.makedirs(f'output/{os.environ["TASK"]}', exist_ok=True)
-    results=[[] for _ in range(3)]
-    targets=[]
-    for x in tqdm(slice[1:]):
-        targets.append(seq2seq_test_dataset[x])
+    st = -1
+    for i in range(1, len(slice)):
+        if not os.path.exists(f'output/{os.environ["TASK"]}/{slice[i]}.txt'):
+            st = max(1, i - 1)
+            break
+
+    for x in tqdm(slice[st:]):
         query2 = get_knowledge(seq2seq_test_dataset[x], args)
         answer2 = seq2seq_test_dataset[x]['seq_out']
         suggested_answer2 = None
@@ -247,11 +258,16 @@ def deal_huggingface() -> None:
             f.write('gt:' + answer2 + '\n')
             for castep in range(3):
                 given_answer2=answer(os.environ['TASK'],query1,answer1,query2,suggested_answer2)
-                results[castep].append(given_answer2)
                 f.write(f'{castep}:' + given_answer2 + '\n')
                 suggested_answer2=given_answer2
-    with open(f'output/{os.environ["TASK"]}/results.pk', 'wb') as f:
-        pk.dump(results, f)
+    targets=[seq2seq_test_dataset[x] for x in slice[1:]]
+    results = [[] for _ in range(3)]
+    for x in slice[1:]:
+        with open(f'output/{os.environ["TASK"]}/{x}.txt', 'r') as f:
+            lines = f.readlines()
+            for castep in range(3):
+                given_answer2 = lines[castep + 2].split(':',1)[1].strip()
+                results[castep].append(given_answer2)
     metric=[]
     for i in range(3):
         metric.append(evaluator.evaluate(results[i],targets, "test"))
